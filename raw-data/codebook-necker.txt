@@ -1,0 +1,26 @@
+Codebook for "Rohdaten"
+======================
+
+
+CASE: id variable
+SERIAL:
+REF:
+QUESTNNR:
+MODE:
+STARTED: start date/time
+PE01_01: age
+PE02: sex
+PE03: family status
+PE04: number of children
+PE05: job
+PE06: meditation experience (1:yes/2:no)
+PE07: years of meditation experience (chr)
+PE08: type of meditation
+PE09: other meditation
+MA01_01_17: MAAS mindfulness scale
+NW03_01: reaction times, block 1, instruction "HOLD as LONG as you can"
+NW04_01: reaction times, block 2, instruction "FLIP as OFTEN as you can"
+TIME001_008: time per page
+TIME_SUM: total time spent on the site
+MAILSENT: if a mail was sent
+FINISED: if participant finished the study

@@ -1,0 +1,173 @@
+---
+title: "Summary stats on RAW data"
+date: "6/11/2019"
+output: html_document
+---
+
+
+
+# Setup
+
+
+## Libs
+
+```{r message = FALSE}
+library(tidyverse)
+library(sjmisc)
+library(here)
+```
+
+
+## Where am I?
+
+```{r}
+here::here()
+```
+
+
+## Load data
+
+```{r}
+load(file = paste0(here::here(), "/objects/rawdata_long.Rdata"))
+
+d <- rawdata_long3
+
+d <- d %>% 
+  select(rt, type, id, mindfulness_score, mindfulness_training, everything())
+d
+```
+
+
+## Data structure
+
+
+There are 3 hierarchical levels in the data:
+
+- level 1: trials, single flip response
+- level 2: blocks, encompassing several flips; there are 2 blocks
+- level 3: person, encompassing 2 blocks, there are 143 (raw) persons
+
+
+
+
+
+
+
+
+# Summary RT data
+
+
+## Grand RT distribution
+
+```{r}
+d %>% 
+  select(rt) %>% 
+  ggplot(aes(x  = rt)) +
+  geom_histogram(bins = 30) +
+  geom_vline(xintercept = median(d$rt, na.rm = T), 
+             linetype = "dashed") +
+  labs(caption = "The dashed vertical line shows the median") +
+  annotate("label", x = median(d$rt, na.rm = T),
+           y = 0, label = median(d$rt, na.rm = T))
+```
+
+## RT summaries per block (`type`)
+
+
+```{r}
+
+d_sum <- d %>%
+  select(rt, type) %>% 
+  drop_na() %>% 
+  group_by(type) %>% 
+  summarise(rt_md = median(rt, na.rm = T),
+            rt_sd = sd(rt),
+            rt_iqr = IQR(rt),
+            rt_mean = mean(rt))
+ d_sum 
+```
+
+
+##  RT distribution per block
+
+
+```{r}
+
+ d %>% 
+  select(rt, type) %>% 
+  ggplot(aes(x  = rt)) +
+  facet_wrap(~ type, scales = "free") +
+  geom_histogram(bins = 30) +
+  geom_vline(xintercept = median(d$rt, na.rm = T), 
+             linetype = "dashed") +
+  labs(caption = "The dashed vertical line shows the median") +
+  geom_label(data = d_sum,
+             aes(x = rt_md, label = rt_md),
+             y = 0)
+```
+
+
+## RT per person per block
+
+Let's aggregate on the person level, and compare then the blocks
+
+
+```{r}
+ d_sum2 <- d %>% 
+  select(rt, type, id) %>%
+  drop_na() %>% 
+  group_by(id, type) %>% 
+  summarise(rt_id_md = median(rt),
+            rt_id_mean = mean(rt))
+
+d_sum2
+```
+
+
+```{r}
+d_sum2 %>% 
+  ggplot(aes(x = type, y = rt_id_md)) +
+  geom_boxplot() +
+  geom_jitter(width = .1, alpha = .3) +
+  scale_y_log10()
+```
+
+
+## RT (collapsed on l2) by mindfulness score
+
+
+```{r}
+d %>% 
+  select(rt, type, id, mindfulness_score) %>% 
+  group_by(type, id, mindfulness_score) %>% 
+  summarise(rt = median(rt)) %>% 
+  ggplot(aes(x = mindfulness_score, y = rt, color = type)) +
+  geom_point() +
+  scale_y_log10() +
+  geom_smooth()
+```
+
+No pattern discernible, I'd say.
+
+MAYBE there's a pattern in the middle of the mindfulness score range, but surely not at the edges.
+
+
+## RT collapsed b mindfulness training
+
+
+```{r}
+d %>% 
+  select(rt, type, id, mindfulness_training) %>% 
+  group_by(type, id, mindfulness_training) %>% 
+  summarise(rt = median(rt)) %>% 
+  ggplot(aes(x = factor(mindfulness_training), y = rt, color = type)) +
+  geom_boxplot() +
+  geom_jitter(alpha = .3) +
+  scale_y_log10() +
+  facet_grid(~type)
+```
+
+
+
+It appears that mindfulness practitioners can exert a stronger attentional control: When asked to flip, they flip quicker. When asked to hold, they hold longer (in comparion to non-mindfulness-practitioners).
+

@@ -1,0 +1,333 @@
+---
+title: "Create main data frame"
+output: html_document
+params:
+  save_to_disk: FALSE
+---
+
+
+
+# Setup
+
+```{r message = FALSE}
+library(tidyverse)
+library(sjmisc)
+library(here)
+```
+
+
+Where am I?
+
+```{r}
+here::here()
+```
+
+
+Load raw data:
+
+```{r}
+rawdata <- readxl::read_xlsx(paste0(here::here(), "/raw-data/Rohdaten.xlsx"))
+```
+
+
+Add id:
+
+```{r}
+rawdata <- rawdata %>% 
+  add_id(var = "id")
+```
+
+
+Check names:
+
+```{r}
+names(rawdata)[c(30, 31)]
+```
+
+
+Check level-1 (l1) data (reaction times):
+```{r}
+head(rawdata$NW03_01)
+```
+
+
+## Extract l1 data
+
+
+
+test it:
+```{r}
+rawdata$NW03_01[1] %>% str_split(pattern=",") %>% `[[`(1) %>% parse_number() %>% str()
+```
+
+### block 1: "flip as often as you can"
+
+Extract reaction time (rt) data, block 1 (flip as often as you can):
+
+```{r}
+flip_rt <- rawdata$NW04_01 %>% 
+  map(~str_split(., pattern = ",")) %>% 
+  map(~`[[`(., 1)) %>%  # extract string element from list, not list, as parse_number needs string element
+  map(~ parse_number(.))
+```
+
+
+Get descriptives:
+
+```{r}
+
+flip_stats <- list()
+
+flip_stats$md_flip <- flip_rt %>% flatten_dbl() %>% median(na.rm = T)
+flip_stats$mean_flip <- flip_rt %>% flatten_dbl() %>% mean(na.rm = T)
+flip_stats$sd_flip <- flip_rt %>% flatten_dbl() %>% sd(na.rm = T)
+flip_stats$iqr_flip <- flip_rt %>% flatten_dbl() %>% median(na.rm = T)
+
+
+flip_stats
+
+
+```
+
+
+Maybe better as as tibble:
+
+```{r}
+
+flip_rt_sum <- flip_stats %>% 
+  flatten_dbl() %>% 
+  enframe(name = "trial", value = "rt") %>% 
+  drop_na() %>% 
+  summarise(type = "flip",
+            md_rt = median(rt),
+            mean_rt = mean(rt),
+            sd_rt = sd(rt),
+            iqr_rt = IQR(rt)
+            )
+
+
+flip_rt_sum
+```
+
+
+
+Visualize it:
+
+```{r}
+flip_rt %>% 
+  flatten_dbl() %>% 
+  enframe() %>% 
+  ggplot(aes(x = value)) +
+    geom_histogram() +
+  geom_vline(xintercept = flip_stats$md_flip, 
+             linetype = "dashed") +
+  labs(caption = "The dashed line shows the median",
+       x = "Reaction time [ms]",
+              title = "Reaction time distribution for block flip") +
+  annotate("label", y = 0, x = flip_stats$md_flip, 
+           label = round(flip_stats$md_flip))
+```
+
+
+### block 2: "hold as long as you can"
+
+
+
+```{r}
+hold_rt <- rawdata$NW03_01 %>% 
+  map(~str_split(., pattern = ",")) %>% 
+  map(~`[[`(., 1)) %>% 
+  map(~ parse_number(.))
+```
+
+
+
+Get descriptives:
+
+```{r}
+
+hold_rt_sum <- hold_rt %>% 
+  flatten_dbl() %>% 
+  enframe(name = "trial", value = "rt") %>% 
+  drop_na() %>% 
+  summarise(type = "hold",
+            md_rt = median(rt),
+            mean_rt = mean(rt),
+            sd_rt = sd(rt),
+            iqr_rt = IQR(rt)
+            )
+
+
+hold_rt_sum
+```
+
+
+
+
+Visualize it:
+
+```{r}
+
+
+hold_rt %>% 
+  flatten_dbl() %>% 
+  enframe() %>% 
+  ggplot(aes(x = value)) +
+    geom_histogram() +
+  geom_vline(xintercept = hold_rt_sum$md_rt[1], 
+             linetype = "dashed") +
+  labs(caption = "The dashed line shows the median",
+       x = "Reaction time [ms]",
+       title = "Reaction time distribution for block FLIP") +
+  annotate("label", y = 0, x = hold_rt_sum$md_rt[1], 
+           label = round(hold_rt_sum$md_rt[1]))
+```
+
+
+
+# Shape to very long data frame
+
+
+
+## Build rt data frame
+
+Build reaction time (rt) data frame, where each flip (of each person) is a row
+
+
+Name list elements:
+
+```{r}
+name_list_elements <- paste0("id_",1:143)
+
+names(flip_rt) <- name_list_elements
+names(hold_rt) <- name_list_elements
+```
+
+
+### Flip data frame
+```{r}
+rt_flip_long <- enframe(flip_rt) %>% 
+  unnest() %>% 
+  add_column(type = "flip")
+
+rt_flip_long
+```
+
+
+### Hold data frame
+
+```{r}
+rt_hold_long <- enframe(hold_rt) %>% 
+  unnest() %>% 
+  add_column(type = "hold")
+
+rt_hold_long
+```
+
+
+### Merge hold and flip data frames
+
+
+```{r}
+rt_long <- rt_flip_long %>% 
+  bind_rows(rt_hold_long)
+```
+
+
+Get ID variable back:
+
+```{r}
+rt_long2 <- rt_long %>% 
+  separate(name, into = c("dummy", "id"), sep = "_") %>% 
+  remove_cols(dummy) %>% 
+  mutate(id = as.numeric(id)) %>% 
+  rename(rt = value)
+
+rt_long2
+```
+
+
+# Build master data frame on level 1 data
+
+Each row is a flip, so a very long data frame.
+
+This type of data frame is built because (I assume) modeling functions can only digest data where a row is a level 1 data (ie., a flip)
+
+
+```{r}
+rawdata_long <- rawdata %>% 
+  full_join(rt_long2)
+```
+
+Is the length of the resulting data frame equal to the length of the RT data frame?
+
+```{r}
+nrow(rawdata_long) == nrow(rt_long2)
+```
+
+
+
+# Compute mindfulness score
+
+
+```{r}
+rawdata_long <- rawdata_long %>% 
+  row_means(MA01_01:MA01_17, n = .9,
+            var = "mindlessness_score")
+
+hist(rawdata_long$mindlessness_score)
+```
+
+How many NAs?
+
+```{r}
+sum(is.na(rawdata_long$mindlessness_score))
+```
+
+Recode mindfulness score (originally, it is code as mindlessness):
+
+```{r}
+rawdata_long2 <- rawdata_long %>% 
+  mutate(mindfulness_score = 7 - mindlessness_score)
+```
+
+
+# Rename variables
+
+
+## Mindfulness training experience
+
+
+Does the person trains mindfulness (regularly)?
+
+```{r}
+rawdata_long3 <- rawdata_long2 %>% 
+  mutate(mindfulness_training = ifelse(PE06 == 1, 1, 0))
+
+
+```
+
+
+Training YES: 1
+Training NO: 0
+
+
+
+
+
+# Save data to disk
+
+
+
+```{r echo = FALSE, eval = params$save_to_disk}
+save(rawdata, file = paste0(here::here(), "/raw-data/rawdata.Rdata"))
+save(rawdata_long3, file = paste0(here::here(), "/objects/rawdata_long.Rdata"))
+
+cat("Data files have been saved to disk.")
+```
+
+
+```{r echo = FALSE, eval = !params$save_to_disk}
+
+cat("Data files have NOT been saved to disk.")
+```
