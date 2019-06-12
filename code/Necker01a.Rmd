@@ -1,0 +1,372 @@
+---
+title: "Cleanup data, detect suspicious cases"
+date: "`r Sys.Date()`"
+output: html_document
+params:
+  save_to_disk: FALSE
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Setup
+
+```{r message = FALSE}
+library(tidyverse)
+library(sjmisc)
+library(here)
+```
+
+
+Where am I?
+
+```{r}
+here::here()
+```
+
+
+
+## Load data
+
+```{r}
+load(file = paste0(here::here(), "/objects/rawdata_long.Rdata"))
+load(file = paste0(here::here(), "/raw-data/raw_data_person_level_rt_summary.Rdata"))
+
+d <- d_person_rt_sum
+
+d
+```
+
+
+
+
+
+# Test for suspicious persons (level 2)
+
+We use the level 2 data frame here.
+
+
+## Did not finish?
+
+```{r}
+d %>% 
+  count(FINISHED)
+```
+
+
+All finished the study. Good.
+
+
+## (Nearly) no variance in the responses 
+
+.. for mindfulness_score
+
+
+Compute sd of mindfulness score (on person level)
+```{r}
+mindfulness_score_sd <- d %>% 
+  ungroup() %>% 
+  select(contains("MA01"), id) %>% 
+  gather(key = item, value = value, -id) %>% 
+  group_by(id) %>% 
+  summarise(mindfulness_sd = sd(value, na.rm = TRUE))
+
+mindfulness_score_sd
+```
+
+
+Add this variable to main l2 data frame:
+
+```{r}
+d2 <- d %>% 
+  full_join(mindfulness_score_sd) %>% 
+  select(id, contains("rt_"), contains("mindful"), everything())
+
+d2
+```
+
+Check distribution of mindfulness score sd:
+
+
+```{r}
+d2 %>% 
+  ggplot(aes(x = mindfulness_sd)) +
+  geom_histogram()
+```
+
+
+There is none with ZERO variance. Good.
+
+Check cases with small variance:
+
+
+```{r}
+d2 %>% 
+  filter(mindfulness_sd < .8) %>%  # arbitrary value
+  select(contains("MA01"))
+```
+
+Looks ok.
+
+
+
+
+
+# Test for suspicous RT (level 1)
+
+
+```{r}
+d_long <- rawdata_long3
+```
+
+
+## Check for too quick to be true (< 300ms)
+
+
+Let's say a flip below 300 ms is suspicious, ie., indicative of low data quality. Let's look for those rt values.
+
+```{r}
+d_long %>% 
+  select(id, type, mindfulness_training, rt) %>% 
+  filter(rt < 300)
+```
+
+
+Which persons (`id`s) are involved?
+
+```{r}
+d_long %>% 
+  select(id, type, mindfulness_training, rt) %>% 
+  filter(rt < 300) %>% 
+  pull(id) %>% 
+  unique()
+```
+
+## Check whether first (few) trials of each block should be disregared
+
+
+Maybe the (few) first trials on each block should not be counted, as folks need to get into the exercise in the first place. So let's check whether the problems occur at the beginning of the blocks.
+
+
+For that, we need an ID for each rt, ie., we need to indicate whether it was the first, second ... trial of this person in this block.
+
+
+```{r}
+d_long2 <- d_long %>% 
+  group_by(id, type) %>% 
+  mutate(id_trial = row_number()) %>% 
+  select(id, type, id_trial, everything()) %>% 
+  ungroup()
+
+d_long2
+```
+
+
+So what's the (distribution of the) RT for the first, second, further flips?
+
+
+```{r}
+d_long2 <- d_long2 %>% 
+  group_by(id) %>% 
+  mutate(trials_pos_group = case_when(
+    id_trial == 1 ~ "first",
+    id_trial == 2 ~ "second",
+    id_trial == max(id_trial) ~ "last",
+    TRUE ~ "middle"
+  )) %>% 
+  select(id, type, id_trial, trials_pos_group, everything()) %>% 
+  ungroup()
+
+d_long2
+```
+
+Compute the summary statistics:
+
+
+```{r}
+d_long2_rt_trials_pos_sum <- d_long2 %>% 
+  group_by(trials_pos_group) %>% 
+  summarise(rt = median(rt, na.rm = T)) %>% 
+  ungroup() %>% 
+  arrange(-rt) %>% 
+  mutate(trials_pos_group = fct_inorder(trials_pos_group))
+d_long2_rt_trials_pos_sum
+```
+
+Sort the factor levels accordingly:
+
+```{r}
+dummy <- levels(d_long2_rt_trials_pos_sum$trials_pos_group)
+dummy
+
+
+d_long2 <- d_long2 %>% 
+  mutate(trials_pos_group = factor(trials_pos_group, levels = dummy))
+
+levels(d_long2$trials_pos_group)
+```
+
+
+
+Now visualize the summary statistics:
+
+```{r}
+d_long2 %>% 
+  ggplot(aes(x = trials_pos_group, y = rt/1000)) +
+  geom_jitter(width = 0.1, alpha = .1) +
+  scale_y_log10() +
+  geom_boxplot(alpha = .7) +
+  facet_wrap(~ type)
+```
+
+
+
+As can be seen, the first trials does not appear to be problematic, rather in the "middle" there appears to happen some "hitting-the-button" behavior, which is not indicative of high data quality.
+
+
+
+## Flag suspicious person
+
+
+Let's flag persons as "suspicous" if ONE of the follow conditions are met
+
+1) RT < 300 ms in one trial (doesn't matter which)
+2) RT > 10 sec in one trial (as previous research is suspicious of time far above 3 seconds)
+
+By this scheme, we will also capture persons with very few or with hella lot of trials.
+
+
+```{r}
+d_long3 <- d_long2 %>% 
+  ungroup() %>% 
+  mutate(is_suspicious_trial = case_when(
+    rt < 300 ~ 1,
+    rt > 10000 ~ 1,
+    TRUE ~ 0
+  ))
+```
+
+
+Let's check the distribution of suspicious persons:
+
+
+```{r}
+d_suspects <- d_long3 %>% 
+  ungroup() %>% 
+  select(rt, is_suspicious_trial, id) %>% 
+  group_by(id) %>% 
+  summarise(is_suspicious_person = max(is_suspicious_trial)) 
+
+
+
+d_suspects %>% 
+  count(is_suspicious_person)
+```
+
+
+## Add information about suspectibility to main data frames
+
+
+### long data frame
+
+```{r}
+d_long3 <- d_long3 %>% 
+  full_join(d_suspects) %>% 
+  select(id, is_suspicious_person, everything())
+
+d_long3
+```
+
+
+## Set suspicious RT to NA
+
+One further way to deal with suspicious data is to set it to NA. Let's try that.
+
+```{r}
+d_long4 <- d_long3 %>% 
+  ungroup() %>% 
+  mutate(rt_not_suspect = case_when(
+    is_suspicious_trial != 0  ~ NA_real_,
+    TRUE ~ rt
+  )) %>% 
+  select(id, rt_not_suspect, everything())
+
+d_long4
+```
+
+
+
+
+
+
+
+
+
+## Add trials count summary to main person level data frame
+
+By the way, let's add the information on the number of trials (per person, per block) to the main person-level data frame.
+
+
+```{r}
+trials_count <- d_long2 %>% 
+  group_by(id, type) %>% 
+  summarise(trials_count = n()) %>% 
+  spread(key = type, value = trials_count) %>% 
+  rename(trials_count_flip = flip,
+         trials_count_hold = hold)
+  
+trials_count
+```
+
+
+Join to main l2 data frame:
+
+
+```{r}
+d3 <- d2 %>% 
+  full_join(trials_count) %>% 
+  select(id, contains("trials_count"), everything())
+
+d3
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Save to disk
+
+
+
+
+```{r echo = FALSE, eval = params$save_to_disk}
+save(d3, file = paste0(here::here(), "/objects/data-cleaned-person-level.Rdata"))
+save(d_long4, file = paste0(here::here(), "/objects/data-cleaned-rt-level.Rdata"))
+
+cat("Data files have been saved to disk.")
+```
+
+
+```{r echo = FALSE, eval = !params$save_to_disk}
+
+cat("Data files have NOT been saved to disk.")
+```
+
+
+
+# SessionInfo
+
+
+
+```{r}
+sessionInfo()
+```
