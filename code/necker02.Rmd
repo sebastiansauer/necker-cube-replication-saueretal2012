@@ -1,7 +1,8 @@
 ---
 title: "Summary stats on RAW data"
-date: "6/11/2019"
+date: "`r Sys.Date()`"
 output: html_document
+number_sections: TRUE
 ---
 
 
@@ -15,6 +16,7 @@ output: html_document
 library(tidyverse)
 library(sjmisc)
 library(here)
+library(dabestr)
 ```
 
 
@@ -171,3 +173,100 @@ d %>%
 
 It appears that mindfulness practitioners can exert a stronger attentional control: When asked to flip, they flip quicker. When asked to hold, they hold longer (in comparion to non-mindfulness-practitioners).
 
+
+
+## RT Distribution by person by block
+
+
+```{r}
+d %>% 
+  select(rt, type, id) %>% 
+  group_by(type) %>% 
+  ggplot(aes(x = factor(id), y = log10(rt))) +
+  geom_boxplot() +
+  facet_wrap(~ type, nrow = 2) +
+  labs(x = "Persons")
+```
+
+
+
+# Summary mindfulness data
+
+
+## Collapse main data frame 
+
+So that one individual (`id`) matches to one row.
+
+Only `mindfulness_training`, `mindfulness_score` and `id` are used.
+
+```{r}
+d_person <- d %>% 
+  group_by(mindfulness_training, id) %>% 
+  summarise(mindfulness_score = median(mindfulness_score)) %>% 
+  ungroup() %>% 
+  mutate(mindfulness_training_f = factor(mindfulness_training))
+
+d_person
+
+unique(d_person$mindfulness_training_f)
+```
+
+
+## Mindfulness practitioners show a higher mindfulness score
+
+... compared to non-practitioners
+
+
+
+
+
+```{r}
+d_person %>% 
+  ggplot(aes(x = factor(mindfulness_training), 
+             y = mindfulness_score)) +
+  geom_jitter(width = .1, alpha = .3) +
+  geom_boxplot(alpha = .7) 
+```
+
+
+There appears to be an effect in that mindfulness practitioniers describe themselves as more mindful (compared to the self-description on persons not practicing mindfulness).
+
+
+
+
+```{r eval = FALSE}
+
+# CURRENTLY NOT WORKING, BUG?
+
+unpaired_mean_diff <- dabest(iris, Species, Petal.Width,
+                             idx = c("setosa", "versicolor"),
+                             paired = FALSE)
+
+dabest <- dabest(
+  .data = d_person, 
+  x = mindfulness_training_f, 
+  y = mindfulness_score,
+  idx = c("0", "1"),
+  paired = FALSE,
+  func = median
+)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+# SessionInfo
+
+
+
+```{r}
+sessionInfo()
+```
