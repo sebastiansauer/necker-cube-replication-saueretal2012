@@ -315,13 +315,54 @@ Training NO: 0
 
 
 
+# Collapse data on person-level
+
+
+Remove level 1 data:
+
+```{r}
+d_person <- select(rawdata_long3, -c(rt, type)) %>% 
+  distinct()
+```
+
+
+Summarise level 1 data on person level and on type (block) level, that is, on level 2:
+
+```{r}
+rt_summary <- d %>% 
+  group_by(id, type) %>% 
+  summarise(rt_md = median(rt, na.rm = TRUE),
+            rt_mean = mean(rt, na.rm = TRUE),
+            rt_iqr = IQR(rt, na.rm = TRUE),
+            rt_sd = IQR(rt, na.rm = TRUE)) 
+
+rt_summary
+```
+
+
+Add rt summaries to person/type level (level 2) data frame:
+
+
+```{r}
+d_person_rt_sum <- d_person %>% 
+  full_join(rt_summary) %>% 
+  select(id, type, contains("rt"), mindfulness_score, mindfulness_training, everything() )
+
+d_person_rt_sum
+```
+
+
+
+
+
 
 # Save data to disk
 
 
 
 ```{r echo = FALSE, eval = params$save_to_disk}
-save(rawdata, file = paste0(here::here(), "/raw-data/rawdata.Rdata"))
+save(rawdata, file = paste0(here::here(), "/raw-data/raw_data_person_level.Rdata"))
+save(d_person_rt_sum, file = paste0(here::here(), "/raw-data/raw_data_person_level_rt_summary.Rdata"))
 save(rawdata_long3, file = paste0(here::here(), "/objects/rawdata_long.Rdata"))
 
 cat("Data files have been saved to disk.")
