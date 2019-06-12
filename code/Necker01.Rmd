@@ -268,7 +268,7 @@ nrow(rawdata_long) == nrow(rt_long2)
 
 
 
-# Compute mindfulness score
+# Compute mindfulness score (as MEAN)
 
 
 ```{r}
@@ -323,21 +323,65 @@ Remove level 1 data:
 ```{r}
 d_person <- select(rawdata_long3, -c(rt, type)) %>% 
   distinct()
+
+d_person
 ```
 
 
-Summarise level 1 data on person level and on type (block) level, that is, on level 2:
+Summarise level 1 data on person level and on type (block) level, that is, on level 2.
+
+
+block HOLD
 
 ```{r}
-rt_summary <- d %>% 
+rt_summary_hold <- rawdata_long3 %>% 
   group_by(id, type) %>% 
-  summarise(rt_md = median(rt, na.rm = TRUE),
-            rt_mean = mean(rt, na.rm = TRUE),
-            rt_iqr = IQR(rt, na.rm = TRUE),
-            rt_sd = IQR(rt, na.rm = TRUE)) 
+  filter(type == "hold") %>% 
+  summarise(rt_md_hold = median(rt, na.rm = TRUE),
+            rt_mean_hold = mean(rt, na.rm = TRUE),
+            rt_iqr_hold = IQR(rt, na.rm = TRUE),
+            rt_sd_hold = IQR(rt, na.rm = TRUE))  %>% 
+  ungroup() %>% 
+  select(-type)
+
+rt_summary_hold
+```
+
+
+
+block FLIP
+
+```{r}
+rt_summary_flip <- rawdata_long3 %>% 
+  group_by(id, type) %>% 
+  filter(type == "flip") %>% 
+  summarise(rt_md_flip = median(rt, na.rm = TRUE),
+            rt_mean_flip = mean(rt, na.rm = TRUE),
+            rt_iqr_flip = IQR(rt, na.rm = TRUE),
+            rt_sd_flip = IQR(rt, na.rm = TRUE)) %>% 
+  ungroup() %>% 
+  select(-type)
+
+rt_summary_flip
+```
+
+
+
+Join the summary data frames:
+
+
+```{r}
+rt_summary <- rt_summary_hold %>% 
+  full_join(rt_summary_flip) %>% 
+  ungroup()
 
 rt_summary
 ```
+
+
+
+
+
 
 
 Add rt summaries to person/type level (level 2) data frame:
@@ -346,7 +390,7 @@ Add rt summaries to person/type level (level 2) data frame:
 ```{r}
 d_person_rt_sum <- d_person %>% 
   full_join(rt_summary) %>% 
-  select(id, type, contains("rt"), mindfulness_score, mindfulness_training, everything() )
+  select(id, contains("rt"), mindfulness_score, mindfulness_training, everything() )
 
 d_person_rt_sum
 ```
