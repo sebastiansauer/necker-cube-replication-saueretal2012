@@ -235,15 +235,9 @@ There appears to be an effect in that mindfulness practitioniers describe themse
 
 
 
-```{r eval = FALSE}
+```{r eval = TRUE}
 
-# CURRENTLY NOT WORKING, BUG?
-
-unpaired_mean_diff <- dabest(iris, Species, Petal.Width,
-                             idx = c("setosa", "versicolor"),
-                             paired = FALSE)
-
-dabest <- dabest(
+dabeest_comp_score <- dabest(
   .data = d_person, 
   x = mindfulness_training_f, 
   y = mindfulness_score,
@@ -251,9 +245,57 @@ dabest <- dabest(
   paired = FALSE,
   func = median
 )
+
+plot(dabeest_comp_score)
+
 ```
 
+## Mindfulness practitioners show LESS flips in HOLD condition
 
+
+```{r}
+d_person_long <- d %>% 
+  select(id, trials_count_flip, trials_count_hold, is_suspicious_person, mindfulness_training, mindfulness_score) %>% 
+  distinct() %>% 
+  gather(key = type, value = flips_count, -c(id, is_suspicious_person, mindfulness_training, mindfulness_score)) %>% 
+  select(id, type, flips_count, everything())
+
+d_person_long
+```
+
+### HOLD
+
+```{r eval = TRUE}
+
+dabeest_comp_score2 <- dabest(
+  .data = filter(d_person_long, type == "trials_count_hold"),
+  x = mindfulness_training, 
+  y = flips_count,
+  idx = c("0", "1"),
+  paired = FALSE,
+  func = median
+)
+
+plot(dabeest_comp_score2)
+
+```
+
+### FLIP
+
+```{r eval = TRUE}
+
+dabeest_comp_score3 <- dabest(
+  .data = filter(d_person_long, type == "trials_count_flip"),
+  x = mindfulness_training, 
+  y = flips_count,
+  idx = c("0", "1"),
+  paired = FALSE,
+  func = median
+)
+
+plot(dabeest_comp_score3)
+
+```
 
 
 # Save to disk
