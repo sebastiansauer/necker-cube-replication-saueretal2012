@@ -1,7 +1,9 @@
 ---
 title: "Create main data frame"
 date: "`r Sys.Date()`"
-output: html_document
+output: 
+  html_document:
+    number_sections: TRUE
 params:
   save_to_disk: FALSE
 ---

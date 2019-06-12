@@ -1,7 +1,9 @@
 ---
 title: "Summary stats on RAW data"
 date: "`r Sys.Date()`"
-output: html_document
+output: 
+  html_document:
+    number_sections: TRUE
 number_sections: TRUE
 ---
 
