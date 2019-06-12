@@ -1,0 +1,353 @@
+---
+title: "Multilevel modeling (mlm) with lme4"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    number_sections: TRUE
+params:
+  save_to_disk: FALSE
+---
+
+
+
+# Setup
+
+```{r message = FALSE}
+library(tidyverse)
+library(sjmisc)
+library(here)
+library(lme4)
+library(sjstats)
+library(ggformula)
+library(broom)
+```
+
+
+Where am I?
+
+```{r}
+here::here()
+```
+
+
+
+## Load data
+
+```{r}
+load(file = paste0(here::here(), "/objects/data-cleaned-rt-level.Rdata"))
+
+```
+
+# Specify models
+
+
+First, note that we have a crossed design: trials are nested BOTH in persons and blocks.
+
+
+## `m01`: First shot
+
+
+```{r}
+m01 <- lmer(rt ~ 1 + factor(mindfulness_training) + mindfulness_score + (1|id) + (1|type),
+            data = d_long4)
+
+print(m01)
+```
+
+We see that mindfulness training *lowers* the RT, and that the effect of the mindfulness_score is negative, too.
+
+
+### ICC
+
+
+Not quite clear to which structure this function is referring to: to the persons or the blocks?
+```{r}
+icc(m01)
+```
+
+
+
+## Center/scale data
+
+Let's normalize the data, to prevent convergence issues due to collinearity, to improve interpretatbility and to foster comparability of different precictors.
+
+I will not standardize binary input, only continuous, following Andrew [Gelman's advice](https://statmodeling.stat.columbia.edu/2009/07/11/when_to_standar/).
+
+
+
+```{r}
+d_long5 <- d_long4 %>% 
+  std(mindfulness_score)
+```
+
+
+Check it:
+
+```{r}
+d_long5 %>% 
+  ggplot(aes(x = mindfulness_score_z)) +
+  geom_density()
+```
+
+Stats:
+
+```{r}
+d_long5 %>% 
+  summarise(m_m = mean(mindfulness_score_z),
+            m_sd = sd(mindfulness_score_z))
+```
+
+
+OK.
+
+
+## `m02`: Refit m01 with standardized predictors
+
+
+```{r}
+m02 <- lmer(rt ~ 1 + factor(mindfulness_training) + mindfulness_score_z + (1|id) + (1|type),
+            data = d_long5)
+
+print(m02)
+```
+
+
+Not much change. No change in the random effects.
+
+
+## Redefine outcome variable as deviation from gand mean in the expected direction
+
+For theoretical reasons, it is expected that mindful individuals yield HIGHER `rt` in the FLIP-block (compared to non-mindfulness individuals). Similarly, it is epected that mindful individuals yield LOWER `rt` in the HOLD-block (compared to non-mindfulness individuals). 
+
+
+Therefore, recoding or re-defining the outcome variable (`rt`) seems in place: The outcome is operationalized as the effect (in the expected direction). Such higher "effect" values show more deviation in `rt` from the grand mean.
+
+
+### Grand (overall) rt median and mean
+
+
+```{r}
+rt_grand_summary <- d_long5 %>% 
+  summarise(rt_grand_mean = mean(rt, na.rm = T),
+            rt_grand_md = median(rt, na.rm = T),
+            rt2_grand_mean = mean(rt_not_suspect, na.rm = T),
+            rt2_grand_md = median(rt_not_suspect, na.rm = T))
+
+rt_grand_summary
+
+
+rt_grand_summary_l <- as.list(rt_grand_summary)
+rt_grand_summary_l
+```
+
+Interestingly, the grand median does not change much, whereas the grand mean does change quite a bit.
+
+
+### Compute `rt_effect`
+
+
+`rt_effect` should be HIGH if the RT is HIGH and the block (type) is HOLD.
+`rt_effect` should be HIGH if the RT is LOW and the block (type) is FLIP
+`rt_effect` should be LOW if the RT is LOW and the block (type) is HOLD.
+`rt_effect` should be LOW if the RT is HIGH and the block (type) is FLIP.
+
+This idea is reflected in the following code:
+
+```{r}
+d_long6 <- d_long5 %>% 
+  mutate(rt_delta_grand_md = rt - rt_grand_summary_l$rt_grand_md) %>% 
+  select(id, rt, rt_delta_grand_md, everything()) %>% 
+  mutate(rt_effect = case_when(
+           (type == "hold") & (rt_delta_grand_md > 0) ~ rt_delta_grand_md * 1,
+           (type == "hold") & (rt_delta_grand_md <= 0) ~ rt_delta_grand_md * -1,
+           (type == "flip") & (rt_delta_grand_md > 0) ~ rt_delta_grand_md * -1,
+           (type == "flip") & (rt_delta_grand_md <= 0) ~ rt_delta_grand_md * 1,
+           TRUE ~ rt_delta_grand_md
+         )) %>% 
+  select(id, rt_effect, everything())
+ 
+d_long6 
+```
+
+
+
+
+## `m03`: As `m02` but with `rt_effect` as outcome
+
+
+
+```{r error = TRUE}
+m03 <- lmer(rt_effect ~ 1 + factor(mindfulness_training) + mindfulness_score_z + (1|id) + (1|type),
+            data = d_long6)
+
+print(m03)
+```
+
+
+What went possibly wrong? 
+
+Maybe the skewness in the outcome variable? Let's check this.
+
+
+```{r}
+gf_density(~rt_effect, data = d_long6)
+```
+
+
+Hm, that looks suspiciously that there are extreme effects which should not be there. Let's check that.
+
+
+```{r}
+d_long6 %>% 
+  filter(percent_rank(rt_effect) < .01)
+```
+
+
+Too many extreme values! We should not work with the uncleaned, "dirty" data, but let's use the "suspicion-proofed" data instead, that is we should use the data were extreme values are replaced by NAs.
+
+
+
+
+### Compute `rt_effect2`
+
+
+`rt_effect2` refers to the sanitized, cleaned, rt (where the extrem values have been repalced by NAs), ie., `rt_not_suspect`.
+
+
+Similarly, to what we've done above:
+
+
+```{r}
+d_long7 <- d_long6 %>% 
+  mutate(rt2_delta_grand_md = rt_not_suspect - rt_grand_summary_l$rt2_grand_md) %>% 
+  select(id, rt, rt2_delta_grand_md, everything()) %>% 
+  mutate(rt2_effect = case_when(
+           (type == "hold") & (rt2_delta_grand_md > 0) ~ rt2_delta_grand_md * 1,
+           (type == "hold") & (rt2_delta_grand_md <= 0) ~ rt2_delta_grand_md * -1,
+           (type == "flip") & (rt2_delta_grand_md > 0) ~ rt2_delta_grand_md * -1,
+           (type == "flip") & (rt2_delta_grand_md <= 0) ~ rt2_delta_grand_md * 1,
+           TRUE ~ rt2_delta_grand_md
+         )) %>% 
+  select(id, rt2_effect, everything())
+ 
+d_long7
+```
+
+Let's check the distribution of `rt2_effect` as a first step.
+
+```{r}
+d_long7 %>% select(rt2_effect) %>% summary()
+
+
+gf_dens(~ rt2_effect, data = d_long7)
+```
+
+
+The range appers to be ok. We see a marked bump left of zero, which remains to be explained.
+
+As a histogram:
+
+
+```{r}
+gf_histogram(~ rt2_effect, data = d_long7)
+```
+
+
+As a qqplot:
+
+
+```{r}
+gf_qq(~ rt2_effect, data = d_long7) %>% 
+  gf_qqline()
+```
+
+
+This does not look reassuring, but we might argue that we are NOT modeling y, but y conditional on the predictor values, so we wouldn't care about the distribution of y. Let's see...
+
+Fit the model again:
+
+
+
+
+
+
+## `m04`: As `m03` but with `rt2_effect` as outcome
+
+
+Notice that the leading `1 + ` in the formula may be omitted according to this [vignette o lme4](https://cran.r-project.org/web/packages/lme4/vignettes/lmer.pdf).
+
+
+
+```{r error = TRUE}
+m04 <- lmer(rt2_effect ~ factor(mindfulness_training) + mindfulness_score_z + (1|id) + (1|type),
+            data = d_long7, REML = FALSE)
+
+print(m04)
+```
+
+
+Hm,failed to converge with `REML = TRUE`. So I set `REML = FALSE`. Now it converged. No clue why.
+
+Mind that the effect (outcome variable) is `rt2_effect`.
+
+The results seem to be promising:
+
+- Mindfulness training has a positive effect on the effect.
+- Mindfulness score has a positive effect.
+- The SD of `type` is large compared to the person SD and compared to the residual ID.
+
+### ICC
+
+The ICC of `id` is approx: 
+
+```{r}
+ICCs_models <- list()
+
+
+ICCs_models$m04$id <- 735.5 / ( 735.5 + 2203.5 + 1293.2)
+ICCs_models$m04$id 
+```
+
+The ICC of `type` is approx:
+
+```{r}
+ICCs_models$m04$type <- 2203.5 / ( 735.5 + 2203.5 + 1293.2)
+ICCs_models$m04$type 
+```
+
+
+### Check model assumptions 
+
+
+
+
+```{r}
+m04_diag <- augment(m04)
+```
+
+
+#### Linearity
+
+According to Gelman and Hill 2007 this is the most important assumption.
+
+
+```{r}
+gf_point(.resid ~ .fitted, data = m04_diag)
+```
+
+
+Gosh, it looks as if there are some severe misspecification whopping around.
+
+
+
+## `m05`: single level regression
+
+Let's start anew. Let's see if we get somewhere using a very simple one-level (non-hierarchical regression).
+
+
+```{r}
+d_small <- d_long6 %>% 
+  select(id, is_suspicious_person, mindfulness_score_z, mindfulness_training)
+```
+
+
