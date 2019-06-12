@@ -325,7 +325,6 @@ Remove level 1 data:
 ```{r}
 d_person <- select(rawdata_long3, -c(rt, type)) %>% 
   distinct()
-
 d_person
 ```
 
@@ -376,7 +375,18 @@ Join the summary data frames:
 rt_summary <- rt_summary_hold %>% 
   full_join(rt_summary_flip) %>% 
   ungroup()
+```
 
+
+Summarise level 1 data on person level and on type (block) level, that is, on level 2:
+
+```{r}
+rt_summary <- d %>% 
+  group_by(id, type) %>% 
+  summarise(rt_md = median(rt, na.rm = TRUE),
+            rt_mean = mean(rt, na.rm = TRUE),
+            rt_iqr = IQR(rt, na.rm = TRUE),
+            rt_sd = IQR(rt, na.rm = TRUE)) 
 rt_summary
 ```
 
@@ -388,6 +398,8 @@ rt_summary
 
 
 ### add to l2 (short) data frame
+
+
 Add rt summaries to person/type level (level 2) data frame:
 
 
