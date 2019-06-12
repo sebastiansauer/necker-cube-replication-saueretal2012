@@ -32,12 +32,12 @@ here::here()
 ## Load data
 
 ```{r}
-load(file = paste0(here::here(), "/objects/rawdata_long.Rdata"))
-load(file = paste0(here::here(), "/raw-data/raw_data_person_level_rt_summary.Rdata"))
-
-d <- d_person_rt_sum
+d_long <- readRDS(file = paste0(here::here(), "/objects/rawdata_long.Rdata"))
+d <- readRDS(file = paste0(here::here(), "/objects/raw_data_person_level_rt_summary.Rdata"))
 
 d
+
+d_long
 ```
 
 
@@ -117,10 +117,7 @@ Looks ok.
 
 # Test for suspicous RT (level 1)
 
-
-```{r}
-d_long <- rawdata_long3
-```
+Now we work with the long (l1) data frame (`d_long`)
 
 
 ## Check for too quick to be true (< 300ms)
@@ -322,7 +319,9 @@ trials_count
 ```
 
 
-Join to main l2 data frame:
+
+
+### Join to main l2 data frame (the short one, person level)
 
 
 ```{r}
@@ -338,21 +337,34 @@ d3
 
 
 
+### Join to main l1 data frame (the long one, trials level)
 
 
+```{r}
+d_long5 <- d_long4 %>% 
+  full_join(trials_count) %>% 
+  select(id, contains("trials_count"), everything())
 
+d_long5
+```
 
 
 
 
 # Save to disk
 
+Define object name to be saved, so that the retrieved object in a further analysis will always have the same name independent of the index (eg., d_long4 or d_long6) of the final object.
+
+```{r}
+d_long_cleaned <- d_long5
+d_short_cleaned <- d3
+```
 
 
 
 ```{r echo = FALSE, eval = params$save_to_disk}
-save(d3, file = paste0(here::here(), "/objects/data-cleaned-person-level.Rdata"))
-save(d_long4, file = paste0(here::here(), "/objects/data-cleaned-rt-level.Rdata"))
+saveRDS(d_short_cleaned, file = paste0(here::here(), "/objects/data-cleaned-person-level.Rdata"))
+saveRDS(d_long_cleaned, file = paste0(here::here(), "/objects/data-cleaned-rt-level.Rdata"))
 
 cat("Data files have been saved to disk.")
 ```
