@@ -31,9 +31,9 @@ here::here()
 ## Load data
 
 ```{r}
-load(file = paste0(here::here(), "/objects/rawdata_long.Rdata"))
+d_long_cleaned <- readRDS(file = paste0(here::here(), "/objects/data-cleaned-rt-level.Rdata"))
 
-d <- rawdata_long3
+d <- d_long_cleaned
 
 d <- d %>% 
   select(rt, type, id, mindfulness_score, mindfulness_training, everything())
@@ -44,15 +44,15 @@ d
 ## Data structure
 
 
-There are 3 hierarchical levels in the data:
+There are 2 hierarchical levels in the data:
 
 - level 1: trials, single flip response
-- level 2: blocks, encompassing several flips; there are 2 blocks
-- level 3: person, encompassing 2 blocks, there are 143 (raw) persons
+- level 2a: blocks, encompassing several flips; there are 2 blocks
+- level 2b: person, encompassing 2 blocks, there are 143 (raw) persons
 
 
 
-
+This is a *crossed* design.
 
 
 
@@ -256,7 +256,7 @@ dabest <- dabest(
 
 
 
-
+# Save to disk
 
 
 
