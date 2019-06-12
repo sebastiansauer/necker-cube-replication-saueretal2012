@@ -381,7 +381,7 @@ rt_summary <- rt_summary_hold %>%
 Summarise level 1 data on person level and on type (block) level, that is, on level 2:
 
 ```{r}
-rt_summary <- d %>% 
+rt_summary <- rawdata_long3 %>% 
   group_by(id, type) %>% 
   summarise(rt_md = median(rt, na.rm = TRUE),
             rt_mean = mean(rt, na.rm = TRUE),
