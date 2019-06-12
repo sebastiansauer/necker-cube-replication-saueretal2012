@@ -383,9 +383,11 @@ rt_summary
 
 
 
+## Add to data frames
 
 
 
+### add to l2 (short) data frame
 Add rt summaries to person/type level (level 2) data frame:
 
 
@@ -400,6 +402,17 @@ d_person_rt_sum
 
 
 
+### Add to l1 (long) data frame
+
+
+```{r}
+rawdata_long4 <- rawdata_long3 %>% 
+  full_join(rt_summary) %>% 
+  select(id, contains("rt"), mindfulness_score, mindfulness_training, everything() )
+
+rawdata_long4
+```
+
 
 
 # Save data to disk
@@ -407,9 +420,9 @@ d_person_rt_sum
 
 
 ```{r echo = FALSE, eval = params$save_to_disk}
-save(rawdata, file = paste0(here::here(), "/raw-data/raw_data_person_level.Rdata"))
-save(d_person_rt_sum, file = paste0(here::here(), "/raw-data/raw_data_person_level_rt_summary.Rdata"))
-save(rawdata_long3, file = paste0(here::here(), "/objects/rawdata_long.Rdata"))
+saveRDS(rawdata, file = paste0(here::here(), "/raw-data/raw_data_person_level.Rdata"))
+saveRDS(d_person_rt_sum, file = paste0(here::here(), "/objects/raw_data_person_level_rt_summary.Rdata"))
+saveRDS(rawdata_long4, file = paste0(here::here(), "/objects/rawdata_long.Rdata"))
 
 cat("Data files have been saved to disk.")
 ```
