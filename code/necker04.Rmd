@@ -40,14 +40,37 @@ d <- readRDS(file = paste0(here::here(), "/objects/data-modeling-rt-level.Rdata"
 # Specify models
 
 
-This section should be parallel to the lme4 models.
+This section should be parallel to the lme4 models, but I'll fit the models via stan using the R package `brms`. I'll index all the models fit using `brms` with a suffixed "b".
 
 
-## `m04s` 
 
-Define priors
+## `m04b` 
 
 
+This is the statistiscal specification of the model:
+
+
+Likelihood:
+
+- $\text{rt} \sim \text{Normal}(\mu, \sigma)$ - That's type of likelihood, ie the conditional values of the predicted variable are normall distributed
+
+- $\mu_i = \alpha + \beta_1 \text{ms}_i + \beta_2\text{mt}$ - That's the (deterministic) regression function
+
+
+Priors:
+
+- $\alpha \sim \text{Normal}(0, 2000)$ - That's the prior for the Intercept
+- $\beta_1 \sim \text{Normal}(0, 2000)$ - ... for beta1
+- $\beta_2 \sim \text{Normal}(0, 2000)$ - ... for beta2
+- $\sigma \sim \text{Normal}(0, 2000)$ - ... for the residual variation
+
+
+*ms*  refers to *mindfulness score*, *mt* to *mindfulness trainint*, and *rt* is the reaction time (it's not specified whether it's the corrected/sanitized or the raw one, being lazy at this point). $\alpha$  is the Intercept, and $\sigma$ the residual distribution variability.
+
+
+### Define priors
+
+Here's an overview on possible prior.
 
 ```{r}
 get_prior(rt2_effect ~ factor(mindfulness_training) + mindfulness_score_z + (1|id) + (1|type),
@@ -55,16 +78,215 @@ get_prior(rt2_effect ~ factor(mindfulness_training) + mindfulness_score_z + (1|i
 
 ```
 
+
+Now here we define them:
+
+
 ```{r}
-priors_m04s <- prior("normal(0,2000)", class = "b")
+priors_m04b <- c(prior(normal(0,2000), class = b),  # Predictor
+                 prior(normal(0,2000), class = Intercept),
+                 prior(cauchy(0, 2000), class = sigma))
 ```
+
+A Half Cauchy is chosen for the residual distribution, $\sigma$. That's a typical choice. Note that the Cauchy distribution has very fat tails, and no expected value.
+
+It has two parameters, a scale ($\x_0$) and a spread parameter ($\lambda$), with the obvious intuitive meaning. 
+
+I'm following here the advice by Richard McElreath.
+
+
+
 
 
 
 
 ```{r error = TRUE}
-m04 <- brm(rt2_effect ~ factor(mindfulness_training) + mindfulness_score_z + (1|id) + (1|type),
-            data = d)
+m04b <- brm(rt2_effect ~ factor(mindfulness_training) + mindfulness_score_z + (1|id) + (1|type),
+            data = d,
+            prior = priors_m04b,
+            iter = 3000, warmup = 1500, chains = 2, cores = 4,
+            seed = 123,
+            file = "m04b")
 
 print(m04)
 ```
+
+Took about 40 Min. to run on my machine.
+
+
+
+```{r}
+plot(m04b)
+```
+
+
+NA rows were automatically excluded from the model (by the `brm` function).
+
+
+## m05b
+
+
+### Fix model definition 
+
+
+The above specification was not explicit (or even wrong) about the multilevel priors. Let's fix that.
+
+
+The model definition can be split up into four parts, for easier mental digestion:
+
+1. Overall model:
+- Likelihood: $\text{rt}_i \sim \text{Normal}(\mu_i, \sigma)$
+- Linear model: $\mu_i = \alpha + \alpha_{id[i]} + \alpha_{type[i]} + \beta_1 \text{ms}_i + \beta_2 \text{mt}_i$
+
+
+2. Intercepts/alphas:
+- Overall intercept: $\alpha \sim \text{Normal}(0, 2000)$
+- Prior for person distribution (L2): $\alpha_{id} \sim \text{Normal}(0, \sigma_{id})$
+- Prior for type (block) distribution (L2): $\alpha_{type} \sim \text{Normal}(0, \sigma_{type})$
+
+
+3. Priors for the variability (of the residuals), ie sigmas: All the same
+- Overall residual variability: $\sigma \sim \text{HalfCauchy}(0, 2000)$
+- Person variability: $\sigma_{id} \sim \text{HalfCauchy}(0, 2000)$
+- Type (block) variability: $\sigma_{type} \sim \text{HalfCauchy}(0, 2000)$
+
+
+4. Priors for the betas: All the same
+
+- mindfulness score beta: $beta_{1} \sim \text{Normal}(0, 2000)$
+- mindfulness training beta: $beta_{2} \sim \text{Normal}(0, 2000)$
+
+
+Mind you that `type` is a within factor with the levels `hold` and `flip`. The index $i$ refers to Level 1, ie one trial (not person!). Note that the predictors are z-normalized. Note that the very definition of a "higher" level (level 2 or higher) in Bayes modeling is that the respective parameter depends on other parameters of the model. That means in turn that the distribution will be learnt from the data (using the prior defined in the model)
+
+
+
+Here are the priors in `brms` notation:
+
+```{r}
+priors_m05b <- c(prior(normal(0,2000), class = b),  # all predictors/betas
+                 prior(normal(0,2000), class = Intercept),  # alpha overall
+                 prior(cauchy(0, 1000), class = sd))  # all sigmas/sd
+```
+
+
+I'not completely sure that this prior definition above applies to all betas, or all sigmas. I've read so but I'have not thoroughly tested it yet.
+
+As the Cauchy is really heavy tailed, I have reduced the spread. That's also a suggestion by the Stan team in order to reduce convering problems.
+
+In sum, the priors should be very mildly informative only.
+
+
+As I have some (58) divergent transitions, I'll try to increads adapt_delta to .0.95 as advised by AJ Kurz [here](https://bookdown.org/connect/#/apps/1850/access).
+
+
+```{r error = TRUE}
+start_time <- Sys.time()
+m05b <- brm(rt2_effect ~ factor(mindfulness_training) + mindfulness_score_z + (1|id) + (1|type),
+            data = d,
+            prior = priors_m05b,
+            iter = 3000, warmup = 1500, chains = 2, cores = 4,
+            seed = 123,
+            file = "../objects/m05b",
+            control = list(adapt_delta = 0.95))
+
+end_time <- Sys.time()
+
+m05b_time_taken <- end_time - start_time
+m05b_time_taken
+
+print(m05b)
+```
+
+
+Oh no, the effective sample size and R-hat does not spend trust in this model. The sampling was apparently inefficient. What could be the reasons? Uninformative Priors? Maybe a less spreaded distribution is more sensible. Let's try that next time.
+
+
+## Number of cores
+
+
+Here's a way to detect the number of cores on a machine:
+
+```{r}
+parallel::detectCores ()
+```
+
+
+Then enable multiples cores to speed up (it can stil take a long time);
+
+```{r}
+options (mc.cores = parallel::detectCores ())
+```
+
+
+## Explore results
+
+To interactively explore the results, we can use this shiny app:
+
+```{r eval = FALSE}
+launch_shiny (m05b)
+```
+
+
+Believe it or not, there's even some kind of Bayes-R2:
+
+```{r}
+bayes_R2(m05b)  # brms
+r2(m05b, loo = TRUE)  # sjstats
+```
+
+
+Get the HDI using `sjstats`:
+
+```{r}
+hdi(m0b5)
+```
+
+
+Note by [strengejacke](https://strengejacke.wordpress.com/2018/06/06/r-functions-for-bayesian-model-statistics-and-summaries-rstats-stan-brms/)
+
+>    hdi() computes the highest density interval for posterior samples. Unlike equal-tailed intervals that exclude 2.5% from each tail of the distribution, the HDI is not equal-tailed and therefor always includes the mode(s) of posterior distributions.
+
+
+
+`tidy_stan()` give a somewhat prettier output:
+
+```{r}
+tidy_stan(m0b5, type = "all")
+```
+
+`type = "all"` includes all random effects of the model.
+
+
+I wonder if I should specify in the `brm` call `brmsfamily("gaussian")`, as I' ve seen [here](https://tem11010.github.io/regression_brms/), but I think this is the default at `brm` anyhow.
+
+ 
+
+
+## m06b
+
+
+
+```{r m06b, error = TRUE}
+start_time <- Sys.time()
+m06b <- brm(rt2_effect ~ factor(mindfulness_training) + mindfulness_score_z + I(mindfulness_score_z^2) + (1|id) + (1|type),
+            data = d,
+            prior = priors_m05b,
+            iter = 3000, warmup = 1500, chains = 2, cores = 4,
+            seed = 123,
+            file = "../objects/m06b",
+            control = list(adapt_delta = 0.95))
+
+end_time <- Sys.time()
+
+m05b_time_taken <- end_time - start_time
+m05b_time_taken
+
+print(m06b)
+plot(m06b)
+````
+
+
+
+
+
