@@ -106,7 +106,7 @@ m04b <- brm(rt2_effect ~ factor(mindfulness_training) + mindfulness_score_z + (1
             prior = priors_m04b,
             iter = 3000, warmup = 1500, chains = 2, cores = 4,
             seed = 123,
-            file = "m04b")
+            file = "../objects/m04b")
 
 print(m04)
 ```
@@ -163,7 +163,7 @@ Mind you that `type` is a within factor with the levels `hold` and `flip`. The i
 
 Here are the priors in `brms` notation:
 
-```{r}
+```{r m05b-priors}
 priors_m05b <- c(prior(normal(0,2000), class = b),  # all predictors/betas
                  prior(normal(0,2000), class = Intercept),  # alpha overall
                  prior(cauchy(0, 1000), class = sd))  # all sigmas/sd
@@ -232,7 +232,7 @@ Believe it or not, there's even some kind of Bayes-R2:
 
 ```{r}
 bayes_R2(m05b)  # brms
-r2(m05b, loo = TRUE)  # sjstats
+sjstats::r2(m05b)  # sjstats
 ```
 
 
@@ -252,7 +252,7 @@ Note by [strengejacke](https://strengejacke.wordpress.com/2018/06/06/r-functions
 `tidy_stan()` give a somewhat prettier output:
 
 ```{r}
-tidy_stan(m0b5, type = "all")
+tidy_stan(m05b, type = "all")
 ```
 
 `type = "all"` includes all random effects of the model.
@@ -285,6 +285,86 @@ m05b_time_taken
 print(m06b)
 plot(m06b)
 ````
+
+
+
+## m07b
+
+Reduce the sigmas to 1000ms
+
+```{r m07b-priors}
+priors_m07b <- c(prior(normal(0,1000), class = b),  # all predictors/betas
+                 prior(normal(0,1000), class = Intercept),  # alpha overall
+                 prior(cauchy(0, 1000), class = sd))  # all sigmas/sd
+```
+
+
+
+
+
+```{r m07b, error = TRUE}
+start_time <- Sys.time()
+m07b <- brm(rt2_effect ~ factor(mindfulness_training) + mindfulness_score_z + I(mindfulness_score_z^2) + (1|id) + (1|type),
+            data = d,
+            prior = priors_m07b,
+            iter = 3000, warmup = 1500, chains = 2, cores = 4,
+            seed = 123,
+            file = "../objects/m08b",
+            control = list(adapt_delta = 0.95))
+
+end_time <- Sys.time()
+
+m07b_time_taken <- end_time - start_time
+m07b_time_taken
+
+print(m07b)
+plot(m07b)
+````
+
+
+
+
+### `m08b``
+
+
+
+
+
+## m08b
+
+
+Further reducing the SDs of the priors.
+
+
+```{r m08b-priors}
+priors_m08b <- c(prior(normal(0,500), class = b),  # all predictors/betas
+                 prior(normal(0,500), class = Intercept),  # alpha overall
+                 prior(cauchy(0, 500), class = sd))  # all sigmas/sd
+```
+
+
+
+
+
+```{r m08b, error = TRUE}
+start_time <- Sys.time()
+m08b <- brm(rt2_effect ~ factor(mindfulness_training) + mindfulness_score_z  + (1|id) + (1|type) + is_suspicious_person,
+            data = d,
+            prior = priors_m08b,
+            iter = 3000, warmup = 1500, chains = 2, cores = 4,
+            seed = 123,
+            file = "../objects/m08b",
+            control = list(adapt_delta = 0.95))
+
+end_time <- Sys.time()
+
+m08b_time_taken <- end_time - start_time
+m08b_time_taken
+
+print(m08b)
+plot(m08b)
+```
+
 
 
 
